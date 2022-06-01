@@ -1,0 +1,9 @@
+FROM python:3.9-slim
+
+RUN pip install kafka-python
+
+RUN pip install requests
+
+COPY stream_producer.py /opt/app/
+
+ENTRYPOINT ["python", "/opt/app/stream_producer.py"]

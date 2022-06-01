@@ -1,0 +1,9 @@
+FROM python:3.9-slim
+
+RUN pip install kafka-python
+
+RUN pip install cassandra-driver
+
+COPY batching_process.py /opt/app/
+
+ENTRYPOINT ["python", "/opt/app/batching_process.py"]
