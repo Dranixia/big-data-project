@@ -2,7 +2,6 @@ import datetime
 from cassandra.cluster import Cluster
 from kafka import KafkaConsumer, TopicPartition
 import json
-import uuid
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as fn
@@ -19,7 +18,7 @@ class CassandraClient:
         self.keyspace = keyspace
         self.session = None
         self.spark = SparkSession.builder.appName("Project").getOrCreate()
-        self.df = self.spark.read.load("wikidata.csv", format="csv", inferSchema=True, multiline=True, header=True)
+        self.df = self.spark.read.load("/opt/app/wikidata.csv", format="csv", inferSchema=True, multiline=True, header=True)  # File is empty, we simply don't know how to create empty with headers only
 
         self.a1 = []
         self.a2 = {}
@@ -34,7 +33,7 @@ class CassandraClient:
 
     def add_row_df(self, dt, domain, page_title, user_name, user_id, is_bot, interval):
         columns = ["time", "domain", "page_title", "user_name", "user_id", "is_bot", "interval"]
-        vals = [dt, domain, page_title, user_name, user_id, is_bot, interval]
+        vals = [(dt, domain, page_title, user_name, user_id, is_bot, interval)]
         local = self.spark.createDataFrame(vals, columns)
         self.df = self.df.union(local)
 
@@ -58,22 +57,71 @@ class CassandraClient:
         self.execute(query3)
         self.execute(query4)
 
+    def write_cat_a(self):
+        query1 = "UPDATE cat_a SET response = '%s' WHERE rid=1" % str(self.a1)
+        query2 = "UPDATE cat_a SET response = '%s' WHERE rid=2" % str(self.a2)
+        query3 = "UPDATE cat_a SET response = '%s' WHERE rid=3" % str(self.a3)
+
+        self.execute(query1)
+        self.execute(query2)
+        self.execute(query3)
+
     def update_category_a(self):
         old_hour = get_current_interval() - datetime.timedelta(hours=8)
         self.df = self.df.filter(self.df.interval != datetime.datetime.strftime(old_hour, "%Y-%m-%d %H:%M:%S"))
 
         if len(self.a1) == 6:
             self.a1 = self.a1[1:]
-        self.a1.append()
+        self.a1.append(self.get_new_a1())
+        self.a2 = self.get_new_a2()
+        self.a3 = self.get_new_a3()
+        self.write_cat_a()
 
     def get_new_a1(self):
-        local = self.df.filter(self.df.interval == datetime.datetime.strftime(get_current_interval()-datetime.timedelta(hours=2), "%Y-%m-%d %H:%M:%S")).groupBy(self.df)
+        result = {"time_start": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=2),
+                                                           "%Y-%m-%d %H:%M:%S"),
+                  "time_end": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=1),
+                                                         "%Y-%m-%d %H:%M:%S"),
+                  "statistics": []}
+        local = self.df.filter(
+            self.df.interval == datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=2),
+                                                           "%Y-%m-%d %H:%M:%S")).groupBy(
+            self.df.domain).count().withColumnRenamed("count", "amount").collect()
+        for row in local:
+            result["statistics"].append({row.domain: row.amount})
+        return result
 
     def get_new_a2(self):
-        pass
+        result = {"time_start": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=7),
+                                                           "%Y-%m-%d %H:%M:%S"),
+                  "time_end": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=1),
+                                                         "%Y-%m-%d %H:%M:%S"),
+                  "statistics": []}
+        local = self.df.filter(self.df.is_bot == "True").groupBy(
+            self.df.domain).count().withColumnRenamed("count", "amount").collect()
+        for row in local:
+            result["statistics"].append({"domain": row.domain, "created_by_bots": row.amount})
+        return result
 
     def get_new_a3(self):
-        pass
+        result = {"time_start": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=7),
+                                                           "%Y-%m-%d %H:%M:%S"),
+                  "time_end": datetime.datetime.strftime(get_current_interval() - datetime.timedelta(hours=1),
+                                                         "%Y-%m-%d %H:%M:%S"),
+                  "statistics": []}
+        local = self.df.groupBy(
+            self.df.user_name).count().withColumnRenamed("count", "amount").sort(fn.desc("amount")).limit(20).collect()
+
+        for row in local:
+            sublocal = self.df.filter(self.df.user_name == row.user_name).collect()
+            subresult = {"user_name": sublocal[0].user_name,
+                         "user_id": sublocal[0].user_id,
+                         "amount": len(sublocal),
+                         "titles": []}
+            for subrow in sublocal:
+                subresult["titles"].append(subrow.page_title)
+            result["statistics"].append(subresult)
+        return result
 
 
 class KafkaReader:
@@ -87,8 +135,10 @@ class KafkaReader:
     def read(self):
         current_interval = get_current_interval()
         while True:
+            # This code will happen once in an hour
             if current_interval != get_current_interval():
                 self.client.update_category_a()
+                current_interval = get_current_interval()
 
             jd = json.loads(next(self.consumer).value.decode('utf-8'))
 
@@ -103,7 +153,7 @@ class KafkaReader:
                 user_id = jd["performer"]["user_id"]
             except KeyError:
                 user_id = 0
-            is_bot = jd["performer"]["user_is_bot"]
+            is_bot = str(jd["performer"]["user_is_bot"])
             interval = datetime.datetime.strptime(dt, "%Y-%m-%d %H:%M:%S").replace(minute=0, second=0)
             self.client.write(domain, dt, page_id, page_title, uri, user_name, user_id, is_bot, interval)
 

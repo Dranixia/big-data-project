@@ -8,4 +8,6 @@ CREATE TABLE user_pages (user_id int, uri text, PRIMARY KEY (user_id, uri));
 
 CREATE TABLE pages (page_id int, uri text, PRIMARY KEY (page_id, uri));
 
-CREATE TABLE user_dates (user_id int, user_name text, uri text, dt timestamp, PRIMARY KEY (dt, uri));
+CREATE TABLE user_dates (user_id int, user_name text, uri text, dt timestamp, PRIMARY KEY (user_id, dt, uri));
+
+CREATE TABLE cat_a (rid int, response text, PRIMARY KEY (rid));

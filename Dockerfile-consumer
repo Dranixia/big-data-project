@@ -1,9 +1,15 @@
-FROM python:3.9-slim
+FROM datamechanics/spark:3.1-latest
+
+ENV PYSPARK_MAJOR_PYTHON_VERSION=3
 
 RUN pip install kafka-python
 
 RUN pip install cassandra-driver
 
+RUN pip install pyspark
+
+COPY wikidata.csv /opt/app/
+
 COPY batching_process.py /opt/app/
 
-ENTRYPOINT ["python", "/opt/app/batching_process.py"]
+#ENTRYPOINT ["python", "/opt/app/batching_process.py"]

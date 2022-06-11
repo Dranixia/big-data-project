@@ -9,9 +9,10 @@ sleep 75s
 docker cp ./DDL.cql cassandra-node:/DDL.cql
 docker exec cassandra-node cqlsh cassandra-node -f ./DDL.cql
 
-
 docker build -t kafka-consumer-image -f ./Dockerfile-consumer .
 docker build -t kafka-producer-image -f ./Dockerfile-producer .
+docker build -t cassandra-server-image -f ./Dockerfile-cass .
 
 docker run -it -d --name kafka-producer --network project-network --rm kafka-producer-image
-docker run -it -d --name kafka-consumer --network project-network --rm kafka-consumer-image
+docker run -it -d --name kafka-consumer --network project-network kafka-consumer-image driver local:///opt/app/batching_process.py
+docker run -it -d --name cassandra-server --network project-network -p 8085:8085 cassandra-server-image
