@@ -1,6 +1,11 @@
 # THIS PROJECT IS NOT FOR 8 Gb MEMORY MACHINES, TRUST US, WE SUFFERED A LOT AND LOST CAT A RESULTS BECAUSE OF THAT
 
-# Design 
+## Team:
+
+- Danylo Butynets
+- Ihor Ramskyi
+
+## Design 
 
 The project uses following tool:
 
